@@ -1,16 +1,51 @@
-# React + Vite
+# LINARES — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React/Vite single-page application for the LINARES movie recommendation engine.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **React 19** — UI components and state
+- **Vite** — dev server and production build
+- **Axios** — API communication
+- **Lucide React** — icons
 
-## React Compiler
+## Structure
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```
+src/
+├── App.jsx             # Root component — layout, shared state, modal, notifications
+├── App.css             # All component and tab styles
+├── index.css           # Global baseline — CSS variables, reset, layout, glass utility
+├── constants.js        # API_BASE, FACTORS, page sizes
+├── hooks/
+│   ├── useRecommendations.js   # Recommendations tab state + fetch logic
+│   ├── useMovieNight.js        # Movie Night tab state + fetch logic
+│   ├── useStats.js             # My Taste tab state + fetch logic
+│   └── useDiscover.js          # Rate Random tab state + fetch logic
+└── components/
+    ├── RecommendationsTab.jsx  # Personalised recommendation grid
+    ├── MovieNightTab.jsx       # Co-watch mode for multiple profiles
+    ├── StatsTab.jsx            # Taste analysis and model insights
+    ├── DiscoverTab.jsx         # Random movie rating session
+    ├── SearchTab.jsx           # Search, rate, and find similar movies
+    ├── SettingsTab.jsx         # Profile management and model controls
+    ├── MovieCard.jsx           # Shared card with poster, badge, and similar button
+    ├── MovieModal.jsx          # Full movie detail, rating, and prediction explanation
+    ├── FactorPills.jsx         # Filter pills for recommendations
+    └── Notification.jsx        # Toast notification overlay
+```
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm install
+npm run dev       # starts on http://localhost:5173
+```
+
+Requires the LINARES backend running on port 8000. The API base URL is derived from `window.location.hostname` in `constants.js`.
+
+## Production build
+
+```bash
+npm run build     # outputs to dist/
+```
