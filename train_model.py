@@ -590,6 +590,8 @@ def load_data(username):
         m.languages,
         m.countries,
         m.keywords,
+        m.collection_name,
+        m.studios,
         r.rating_score
     FROM ratings r
     JOIN movies m ON r.movie_tconst = m.tconst
@@ -630,82 +632,73 @@ def train(username, verbose=True):
     if verbose:
         logger.info(f"Movies with pre-computed embeddings: {cached_count}/{len(df)}")
     
-    # Prepare features
-    if verbose:
-        logger.info("\nPreparing features...")
-        logger.info("  - Encoding genres (multi-hot)...")
-        logger.info("  - Computing person features (target encoding)...")
-        logger.info("  - Processing plot embeddings...")
-    
-    # Create feature metadata for inference later
-    metadata = FeatureMetadata()
-    metadata.fit(df)
-    
-    # Prepare features using training data for target encoding
-    # Pass the dynamically selected keywords from metadata
-    X = metadata.prepare_features(df, use_cached_embeddings=True)
     y = df['rating_score']
-    
-    if verbose:
-        logger.info(f"\nDataset dimensions: {X.shape[0]} samples, {X.shape[1]} features")
-        
-        # Show feature groups
-        n_genre = sum(1 for c in X.columns if c.startswith('genre_'))
-        n_combo = sum(1 for c in X.columns if c.startswith('combo_'))
-        n_kw = sum(1 for c in X.columns if c.startswith('kw_'))
-        n_person = sum(1 for c in X.columns if any(c.startswith(p) for p in ['dir_', 'wri_', 'act_', 'stu_', 'com_']))
-        n_emb = sum(1 for c in X.columns if c.startswith('plot_emb_'))
-        n_other = X.shape[1] - n_genre - n_combo - n_kw - n_person - n_emb
-        logger.info(f"  - Base features: {n_other}")
-        logger.info(f"  - Genre features: {n_genre}")
-        logger.info(f"  - Genre combinations: {n_combo}")
-        logger.info(f"  - Keyword features: {n_kw} (dynamic)")
-        logger.info(f"  - Person features: {n_person}")
-        logger.info(f"  - Embedding dimensions: {n_emb}")
-    
-    # K-Fold Cross-Validation
-    n_splits = min(5, len(df) // 5)  # At least 5 samples per fold
-    if n_splits < 2:
-        n_splits = 2
-    
-    if verbose:
-        logger.info(f"\n📊 Running {n_splits}-Fold Cross-Validation...")
-    
-    # Cross-validation predictions
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-    cv_predictions = np.zeros(len(y))
-    fold_maes = []
-    
-    for fold, (train_idx, val_idx) in enumerate(kf.split(X)):
-        X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
-        y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
-        
-        fold_model = CatBoostRegressor(
-            iterations=300,
+
+    # Adaptive model complexity: scale depth and iterations with dataset size.
+    # Small datasets need heavy regularisation; larger ones can learn more nuance.
+    n_ratings = len(df)
+    if n_ratings >= 200:
+        depth, iterations = 5, 600
+    elif n_ratings >= 100:
+        depth, iterations = 4, 400
+    else:
+        depth, iterations = 3, 300
+
+    def make_model(verbose_interval=0):
+        return CatBoostRegressor(
+            iterations=iterations,
             learning_rate=0.03,
-            depth=3,
+            depth=depth,
             l2_leaf_reg=5,
             min_data_in_leaf=3,
-            loss_function='RMSE',
-            verbose=0,
+            loss_function='MAE',   # better fit for discrete 8-label target
+            verbose=verbose_interval,
             random_seed=42,
             train_dir=os.path.join(DATA_DIR, 'catboost_info'),
         )
+
+    # K-Fold Cross-Validation.
+    # Each fold refits its own FeatureMetadata on the training split only,
+    # preventing target-encoding and keyword-selection leakage.
+    n_splits = min(5, len(df) // 5)
+    if n_splits < 2:
+        n_splits = 2
+
+    if verbose:
+        logger.info(f"\n📊 Running {n_splits}-Fold Cross-Validation (depth={depth}, iter={iterations})...")
+
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+    cv_predictions = np.zeros(len(df))
+    fold_maes = []
+
+    for fold, (train_idx, val_idx) in enumerate(kf.split(df)):
+        df_train = df.iloc[train_idx]
+        df_val   = df.iloc[val_idx]
+
+        # Fit metadata (target encoding, keywords) on training fold only
+        fold_meta = FeatureMetadata()
+        fold_meta.fit(df_train)
+
+        X_train = fold_meta.prepare_features(df_train, use_cached_embeddings=True)
+        X_val   = fold_meta.prepare_features(df_val,   use_cached_embeddings=True)
+        y_train = df_train['rating_score']
+        y_val   = df_val['rating_score']
+
+        fold_model = make_model()
         fold_model.fit(X_train, y_train)
-        
+
         fold_preds = fold_model.predict(X_val)
         cv_predictions[val_idx] = fold_preds
-        
+
         fold_mae = mean_absolute_error(y_val, fold_preds)
         fold_maes.append(fold_mae)
         if verbose:
             logger.info(f"  Fold {fold + 1}: MAE = {fold_mae:.2f}")
-    
-    # Overall CV metrics
-    cv_mae = mean_absolute_error(y, cv_predictions)
-    cv_r2 = r2_score(y, cv_predictions)
+
+    cv_mae     = mean_absolute_error(y, cv_predictions)
+    cv_r2      = r2_score(y, cv_predictions)
     cv_mae_std = np.std(fold_maes)
-    
+
     if verbose:
         logger.info("\n" + "="*60)
         logger.info("🎯 TRAINING RESULTS 🎯")
@@ -725,22 +718,32 @@ def train(username, verbose=True):
         else:
             logger.info("   ⚠️ Low accuracy. You need to rate more movies.")
 
-    # Train final model on all data
+    # Train final model on all data.
+    # Metadata is now fitted on the full set — correct for inference.
     if verbose:
         logger.info("\n" + "-"*60)
         logger.info("Training final model on all data...")
-    
-    model = CatBoostRegressor(
-        iterations=300,
-        learning_rate=0.03,
-        depth=3,
-        l2_leaf_reg=5,
-        min_data_in_leaf=3,
-        loss_function='RMSE',
-        verbose=100 if verbose else 0,
-        random_seed=42,
-        train_dir=os.path.join(DATA_DIR, 'catboost_info'),
-    )
+
+    metadata = FeatureMetadata()
+    metadata.fit(df)
+    X = metadata.prepare_features(df, use_cached_embeddings=True)
+
+    if verbose:
+        n_genre  = sum(1 for c in X.columns if c.startswith('genre_'))
+        n_combo  = sum(1 for c in X.columns if c.startswith('combo_'))
+        n_kw     = sum(1 for c in X.columns if c.startswith('kw_'))
+        n_person = sum(1 for c in X.columns if any(c.startswith(p) for p in ['dir_', 'wri_', 'act_', 'stu_', 'com_']))
+        n_emb    = sum(1 for c in X.columns if c.startswith('plot_emb_'))
+        n_other  = X.shape[1] - n_genre - n_combo - n_kw - n_person - n_emb
+        logger.info(f"\nDataset dimensions: {X.shape[0]} samples, {X.shape[1]} features")
+        logger.info(f"  - Base features: {n_other}")
+        logger.info(f"  - Genre features: {n_genre}")
+        logger.info(f"  - Genre combinations: {n_combo}")
+        logger.info(f"  - Keyword features: {n_kw} (dynamic)")
+        logger.info(f"  - Person/studio features: {n_person}")
+        logger.info(f"  - Embedding dimensions: {n_emb}")
+
+    model = make_model(verbose_interval=100 if verbose else 0)
     model.fit(X, y)
     
     # ==========================================
