@@ -1,0 +1,33 @@
+# Core API
+fastapi==0.135.1
+uvicorn==0.42.0
+pydantic==2.12.5
+
+# Data & ML
+numpy==2.4.3
+pandas==3.0.1
+scikit-learn==1.8.0
+catboost==1.2.10
+
+# Embeddings & NLP
+sentence-transformers==5.3.0
+transformers==5.3.0
+tokenizers==0.22.2
+torch==2.10.0
+huggingface_hub==1.7.1
+safetensors==0.7.0
+
+# Web scraping
+lxml==5.4.0
+
+# Utilities
+rich==14.3.3
+scipy==1.17.1
+filelock==3.25.2
+tqdm==4.67.3
+requests>=2.28.0
+
+# NOTE: NVIDIA/CUDA packages (nvidia-*, cuda-*) are not listed here.
+# PyTorch will use CPU by default. For GPU acceleration, install the
+# appropriate CUDA toolkit and run:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
