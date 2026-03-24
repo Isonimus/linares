@@ -276,7 +276,9 @@ def predict_score(username: str, tconst: str):
         'languages': m.get('languages'),
         'countries': m.get('countries'),
         'keywords': m.get('keywords'),
-        'plot_embedding': m.get('plot_embedding')
+        'plot_embedding': m.get('plot_embedding'),
+        'collection_name': m.get('collection_name'),
+        'studios': m.get('studios'),
     }])
     
     X = metadata.prepare_features(df, use_cached_embeddings=True)
