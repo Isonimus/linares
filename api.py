@@ -555,7 +555,7 @@ def get_recommendations(username: str, genre: Optional[str] = None, factor: Opti
     
     query = """
     SELECT tconst, title, year, genres, runtime, imdb_rating, num_votes, directors, writers, actors, plot, poster_url, plot_embedding,
-           composers, certificates, languages, countries, keywords
+           composers, certificates, languages, countries, keywords, collection_name, studios
     FROM movies
     WHERE tconst NOT IN (SELECT movie_tconst FROM ratings WHERE user_id = ?)
     """
@@ -616,7 +616,7 @@ def get_shared_recommendations(users: List[str] = Query(...), factor: Optional[s
     placeholders = ','.join(['?'] * len(user_ids))
     query = f"""
     SELECT tconst, title, year, genres, runtime, imdb_rating, num_votes, directors, writers, actors, plot, poster_url, plot_embedding,
-           composers, certificates, languages, countries, keywords
+           composers, certificates, languages, countries, keywords, collection_name, studios
     FROM movies
     WHERE tconst NOT IN (
           SELECT movie_tconst FROM ratings WHERE user_id IN ({placeholders})
